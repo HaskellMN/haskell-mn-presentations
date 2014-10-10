@@ -1,29 +1,39 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric, TypeFamilies, DeriveDataTypeable, TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell #-}
 
-module ServerSideWeb where
+module Main where
 
-import Data.Aeson hiding (Value, json)
-import GHC.Generics
-import Network.HTTP
-import Control.Applicative
-import Data.ByteString (ByteString)
+import Control.Monad.Reader                 (ask)
+import Data.Aeson                           (ToJSON, FromJSON, object, (.=))
+import Data.ByteString                      (ByteString)
+import Data.SafeCopy                        (deriveSafeCopy, base)
+import Data.Typeable                        (Typeable)
+import GHC.Generics                         (Generic)
+import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 
-import Data.Acid
-import Data.Typeable
-import Data.SafeCopy
-import Control.Monad.Reader (ask)
+import Data.Acid ( Update
+                  , Query
+                  , makeAcidic
+                  , openLocalStateFrom
+                  , update
+                  , query
+                  )
+
+import Web.Scotty ( scotty
+                   , get
+                   , post
+                   , body
+                   , param
+                   , html
+                   , json
+                   , middleware
+                   )
 
 import qualified Data.Map as Map
 import qualified Control.Monad.State as S
-
-import Web.Scotty (scotty, get, post, body, param, html, raise, text, status, json, middleware)
--- import Data.Aeson (object, (.=))
-import Data.Text.Lazy.Encoding (decodeUtf8)
-import Data.Monoid (mconcat)
-import Control.Monad.IO.Class (liftIO)
-import Network.HTTP.Types (status418)
-import System.Random (randomRs, newStdGen)
-import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 
 
 exampleMessage = Message "test" 0

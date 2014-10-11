@@ -6,138 +6,114 @@
 
 module Main where
 
+
+import Control.Applicative ((<$>))
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.State (modify)
 import Control.Monad.Reader                 (ask)
 import Data.Aeson                           (ToJSON, FromJSON, object, (.=))
 import Data.ByteString                      (ByteString)
+import Data.List (sortBy)
+import Data.Ord (comparing)
 import Data.SafeCopy                        (deriveSafeCopy, base)
 import Data.Typeable                        (Typeable)
 import GHC.Generics                         (Generic)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 
 import Data.Acid ( Update
-                  , Query
-                  , makeAcidic
-                  , openLocalStateFrom
-                  , update
-                  , query
-                  )
+                 , Query
+                 , makeAcidic
+                 , openLocalState --From
+                 , update
+                 , query
+                 )
 
 import Web.Scotty ( scotty
-                   , get
-                   , post
-                   , body
-                   , param
-                   , html
-                   , json
-                   , middleware
-                   )
+                  , get
+                  , post
+                  , body
+                  , param
+                  , html
+                  , json
+                  , middleware
+                  )
 
-import qualified Data.Map as Map
-import qualified Control.Monad.State as S
+import qualified Data.IntMap as IntMap
 
-type ID = Int
 
+-- https://ocharles.org.uk/blog/posts/2013-12-14-24-days-of-hackage-acid-state.html
 
 -- | Messages
 data Message = Message { content :: ByteString
-                        , id :: ID
-                        }
-  deriving (Show, Generic, Ord, Eq, Typeable)
+                       , _id :: Int
+                       }
+  deriving (Show, Generic, Typeable)
 
-
-exampleMessage = Message "test" 0
-
-instance FromJSON Message
 instance ToJSON Message
 
+data MessageDb = MessageDb { allMessages :: IntMap.IntMap Message }
+  deriving (Typeable)
+
+
+orderedMessages :: Query MessageDb [Message]
+orderedMessages =
+  sortBy (comparing _id) . IntMap.elems . allMessages <$> ask
+  
+messageById :: Int -> Query MessageDb (Maybe Message)
+messageById _id = do
+  db <- ask
+  return (IntMap.lookup _id (allMessages db))
+
+
+-- Can I return the message?
+addContent :: ByteString -> Update MessageDb ()
+addContent content = modify go
+ where
+  go (MessageDb db) = MessageDb $
+    case IntMap.maxViewWithKey db of
+      Just ((max, _), _) ->
+        let _id = (max + 1)
+            message = Message content _id
+        in IntMap.insert _id message db
+      Nothing            ->
+        let _id = 1
+            message = Message content _id
+        in IntMap.singleton _id message
+
+
 $(deriveSafeCopy 0 'base ''Message)
+$(deriveSafeCopy 0 'base ''MessageDb)
+$(makeAcidic ''MessageDb ['orderedMessages, 'addContent, 'messageById])
 
 
--- | Database
-type Key = ID
-type Value = Message
+acidMain :: IO ()
+acidMain = do
+  state <- openLocalState (MessageDb IntMap.empty)
 
-data Database = Database !(Map.Map Key Value)
-  deriving (Show, Ord, Eq, Typeable)
+  update state (AddContent "ENOMISSLES")
 
-$(deriveSafeCopy 0 'base ''Database)
-
-
-insertKey :: Key -> Value -> Update Database ()
-insertKey key value
-    = do Database m <- S.get
-         S.put (Database (Map.insert key value m))
-
-lookupKey :: Key -> Query Database (Maybe Value)
-lookupKey key
-    = do Database m <- ask
-         return (Map.lookup key m)
-
-deleteKey :: Key -> Update Database ()
-deleteKey key
-    = do Database m <- S.get
-         S.put (Database (Map.delete key m))
-
-allKeys :: Int -> Query Database [(Key, Value)]
-allKeys limit
-    = do Database m <- ask
-         return $ take limit (Map.toList m)
-
-$(makeAcidic ''Database ['insertKey, 'lookupKey, 'allKeys, 'deleteKey])
+  -- allMessages <- query state OrderedMessages
+  message <- query state $ MessageById 1
+  print message
 
 
-fixtures :: Map.Map ID Message
-fixtures = Map.empty
-
-test ::  Key -> Value -> IO ()
-test key val = do
-    database <- openLocalStateFrom "db/" (Database fixtures)
-    result <- update database (InsertKey key val)
-    result <- query database (AllKeys 10)
-    print result
-
+-- https://github.com/scotty-web/scotty/blob/master/examples/reader.hs
 
 -- | Web server:
 main = scotty 3000 $ do
+    state <- liftIO $ openLocalState (MessageDb IntMap.empty)
+    
     middleware logStdoutDev
 
     get "/messages" $ do
-        json $ object ["messages" .= [exampleMessage]]
+        allMessages <- liftIO $ query state OrderedMessages
+        json $ object ["messages" .= allMessages]
 
     get "/messages/:id" $ do
-        id <- param "id"
-        let x = read id :: ID
-        json $ object ["messages" .= [exampleMessage]]
+        _id <- param "id"
+        mmessage <- liftIO $ query state $ MessageById (read _id :: Int)
+        case mmessage of
+            Nothing -> json $ object ["messages" .= ([] :: [Message])]
+            Just message -> json $ object ["messages" .= [message]]
 
     -- post "/messages" $ do ...
-
-    get "/sum/:items" $ do
-        items <- param "items"
-        json $ object ["sum" .= sum (read items :: [Int])]
-
-    get "/sum" $ do
-        x <- param "x"
-        y <- param "y"
-        json $ object [ "result" .= ((read x :: Int) + (read y :: Int)) ]
-
-    get "/polar" $ do
-        x <- param "x"
-        y <- param "y"
-        let x' = read x :: Float
-        let y' = read y :: Float
-        let r     = sqrt (x'*x' + y'*y')
-        let theta = atan2 y' x'
-        json $ object [ "r" .= r
-                      , "theta" .= theta
-                      ]
-
-    get "/cartesian" $ do
-        r <- param "r"
-        theta <- param "theta"
-        let r' = read r :: Float
-        let theta' = read theta :: Float
-        let x = r' * cos theta'
-        let y = r' * sin theta'
-        json $ object [ "x" .= x
-                      , "y" .= y
-                      ]

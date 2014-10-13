@@ -7,17 +7,17 @@
 module Main where
 
 
-import Control.Applicative ((<$>))
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.State (modify)
+import Control.Applicative                  ((<$>))
+import Control.Monad.IO.Class               (liftIO)
 import Control.Monad.Reader                 (ask)
 import Data.Aeson                           (ToJSON, FromJSON, object, (.=))
 import Data.ByteString                      (ByteString)
-import Data.List (sortBy)
-import Data.Ord (comparing)
+import Data.List                            (sortBy)
+import Data.Ord                             (comparing)
 import Data.SafeCopy                        (deriveSafeCopy, base)
 import Data.Typeable                        (Typeable)
 import GHC.Generics                         (Generic)
+import Network.HTTP.Types                   (status404)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 
 import Data.Acid ( Update
@@ -36,9 +36,11 @@ import Web.Scotty ( scotty
                   , html
                   , json
                   , middleware
+                  , status
                   )
 
 import qualified Data.IntMap as IntMap
+import qualified Control.Monad.State as State
 
 
 -- https://ocharles.org.uk/blog/posts/2013-12-14-24-days-of-hackage-acid-state.html
@@ -65,20 +67,20 @@ messageById _id = do
   return (IntMap.lookup _id (allMessages db))
 
 
--- Can I return the message?
-addContent :: ByteString -> Update MessageDb ()
-addContent content = modify go
- where
-  go (MessageDb db) = MessageDb $
-    case IntMap.maxViewWithKey db of
-      Just ((max, _), _) ->
-        let _id = (max + 1)
-            message = Message content _id
-        in IntMap.insert _id message db
-      Nothing            ->
-        let _id = 1
-            message = Message content _id
-        in IntMap.singleton _id message
+addContent :: ByteString -> Update MessageDb Message
+addContent content = do
+    (MessageDb db) <- State.get
+    let (message, db') = case IntMap.maxViewWithKey db of
+          Just ((max, _), _) ->
+            let _id = (max + 1)
+                message = Message content _id
+            in (message, IntMap.insert _id message db)
+          Nothing ->
+            let _id = 1
+                message = Message content _id
+            in (message, IntMap.singleton _id message)
+    State.put $ MessageDb db'
+    return message
 
 
 $(deriveSafeCopy 0 'base ''Message)
@@ -102,7 +104,6 @@ acidMain = do
 -- | Web server:
 main = scotty 3000 $ do
     state <- liftIO $ openLocalState (MessageDb IntMap.empty)
-    
     middleware logStdoutDev
 
     get "/messages" $ do
@@ -114,6 +115,11 @@ main = scotty 3000 $ do
         mmessage <- liftIO $ query state $ MessageById (read _id :: Int)
         case mmessage of
             Nothing -> json $ object ["messages" .= ([] :: [Message])]
-            Just message -> json $ object ["messages" .= [message]]
+            Just message -> do
+                status status404
+                json $ object ["messages" .= [message]]
 
-    -- post "/messages" $ do ...
+    post "/messages" $ do
+        content <- param "content"
+        message <- liftIO $ update state $ AddContent content
+        json $ object ["messages" .= [message]]

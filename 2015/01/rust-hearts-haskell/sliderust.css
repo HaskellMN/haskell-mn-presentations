@@ -1,0 +1,57 @@
+body {
+    max-width: 1125px;
+}
+
+h1 {
+    font-size: 70px;
+}
+
+body, h5 {
+    font-size: 35px;
+}
+
+pre {
+    font-size: 30px;
+}
+
+section {
+    display: none;
+}
+
+section.current {
+    display: block;
+}
+
+section.title-slide h1 {
+    text-align: center;
+    font-weight: bold;
+    margin-top: 200px;
+    border: none;   
+}
+
+section.title-slide p {
+    text-align: center;
+    font-size: 80%;
+    margin: 0;
+}
+
+code.language-text {
+    /* Servo doesn't support pre-wrap yet */
+    white-space: normal;
+}
+
+body, h1, h2, h3, h4, h5, h6, nav {
+    font-family: sans-serif;
+}
+
+pre, code {
+    font-family: monospace;
+}
+
+ul {
+    list-style: none;
+}
+
+li::before {
+    content: "\2022\A0";
+}

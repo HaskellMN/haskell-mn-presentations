@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+ "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <meta name="author" content="Kyle Marek-Spartz" />
+  <title>Thunks, Tail calls, and Trampolines</title>
+  <style type="text/css">code{white-space: pre;}</style>
+  <style type="text/css">
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { color: #007020; font-weight: bold; }
+code > span.dt { color: #902000; }
+code > span.dv { color: #40a070; }
+code > span.bn { color: #40a070; }
+code > span.fl { color: #40a070; }
+code > span.ch { color: #4070a0; }
+code > span.st { color: #4070a0; }
+code > span.co { color: #60a0b0; font-style: italic; }
+code > span.ot { color: #007020; }
+code > span.al { color: #ff0000; font-weight: bold; }
+code > span.fu { color: #06287e; }
+code > span.er { color: #ff0000; font-weight: bold; }
+  </style>
+  <link rel="stylesheet" type="text/css" media="screen, projection, print"
+    href="http://www.w3.org/Talks/Tools/Slidy2/styles/slidy.css" />
+  <script src="http://www.w3.org/Talks/Tools/Slidy2/scripts/slidy.js"
+    charset="utf-8" type="text/javascript"></script>
+</head>
+<body>
+<div class="slide titlepage">
+  <h1 class="title">Thunks, Tail calls, and Trampolines</h1>
+  <p class="author">
+Kyle Marek-Spartz
+  </p>
+  <p class="date">HaskellMN, March 18, 2015</p>
+</div>
+<div id="cons" class="slide section level1">
+<h1>Cons</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> cons = <span class="kw">function</span> (head, tail) {
+  <span class="kw">return</span> <span class="kw">function</span> (f) {
+    <span class="kw">return</span> <span class="fu">f</span>(head, tail);
+  };
+};</code></pre>
+</div>
+<div id="car" class="slide section level1">
+<h1>Car</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> car = <span class="kw">function</span> (pair) {
+  <span class="kw">return</span> <span class="fu">pair</span>(
+    <span class="kw">function</span> (head, tail) { <span class="kw">return</span> head; }
+  );
+};</code></pre>
+</div>
+<div id="cdr" class="slide section level1">
+<h1>Cdr</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> cdr = <span class="kw">function</span> (pair) {
+  <span class="kw">return</span> <span class="fu">pair</span>(
+    <span class="kw">function</span> (head, tail) { <span class="kw">return</span> tail; }
+  );
+};</code></pre>
+</div>
+<div id="streams" class="slide section level1">
+<h1>Streams</h1>
+<ul class="incremental">
+<li>Streams</li>
+<li>Lazy lists</li>
+<li>Possibly infinite</li>
+</ul>
+</div>
+<div id="haskell-lists" class="slide section level1">
+<h1>Haskell Lists</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell">ones <span class="fu">=</span> <span class="dv">1</span> <span class="fu">:</span> ones                              <span class="co">-- 1, 1, 1, ...</span>
+nats <span class="fu">=</span> <span class="dv">1</span> <span class="fu">:</span> map (<span class="dv">1</span><span class="fu">+</span>) nats                     <span class="co">-- 1, 2, 3, ...</span>
+fibs <span class="fu">=</span> <span class="dv">0</span> <span class="fu">:</span> <span class="dv">1</span> <span class="fu">:</span> zipWith (<span class="fu">+</span>) fibs (tail fibs)  <span class="co">-- 0, 1, 1, 2, 3, ...</span></code></pre>
+</div>
+<div id="javascript..." class="slide section level1">
+<h1>JavaScript...?</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> ones = <span class="fu">cons</span>(<span class="dv">1</span>, ones); <span class="co">// &quot;1undefined&quot;</span></code></pre>
+</div>
+<div id="thunks" class="slide section level1">
+<h1>Thunks!</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> ones = <span class="fu">cons</span>(<span class="dv">1</span>, <span class="kw">function</span> () { <span class="kw">return</span> ones; });
+
+<span class="kw">var</span> force = <span class="kw">function</span> (thunk) { <span class="kw">return</span> <span class="fu">thunk</span>() };</code></pre>
+</div>
+<div id="javascript-streams" class="slide section level1">
+<h1>JavaScript Streams</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamCons = cons;
+<span class="kw">var</span> streamHead = car;</code></pre>
+</div>
+<div id="javascript-compose" class="slide section level1">
+<h1>JavaScript Compose</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> compose = <span class="kw">function</span> (f, g) {
+  <span class="kw">return</span> <span class="kw">function</span> (_) {
+    <span class="co">// arguments is a Javascript way of variadic arguments.</span>
+    <span class="kw">var</span> argsList = <span class="ot">Array</span>.<span class="ot">prototype</span>.<span class="ot">slice</span>.<span class="fu">call</span>(arguments);
+    <span class="co">// Fn.apply takes a &quot;this&quot; context and a list of arguments:</span>
+    <span class="kw">return</span> <span class="fu">f</span>(<span class="ot">g</span>.<span class="fu">apply</span>(<span class="kw">this</span>, argsList));
+  };
+};</code></pre>
+</div>
+<div id="javascript-streams-continued." class="slide section level1">
+<h1>JavaScript Streams, continued.</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamTail = <span class="fu">compose</span>(force, cdr);</code></pre>
+</div>
+<div id="stream-map" class="slide section level1">
+<h1>Stream Map</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamMap = <span class="kw">function</span> (stream, f) {
+  <span class="kw">return</span> <span class="fu">streamCons</span>(
+    <span class="fu">f</span>(<span class="fu">streamHead</span>(stream)),
+    <span class="kw">function</span> () { <span class="kw">return</span> <span class="fu">streamMap</span>(<span class="fu">streamTail</span>(stream), f); }
+  );
+};</code></pre>
+</div>
+<div id="natural-numbers" class="slide section level1">
+<h1>Natural Numbers</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell">nats <span class="fu">=</span> <span class="dv">1</span> <span class="fu">:</span> map (<span class="dv">1</span><span class="fu">+</span>) nats</code></pre>
+</div>
+<div id="in-javascript" class="slide section level1">
+<h1>... in JavaScript</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> increment = <span class="kw">function</span> (x) { <span class="kw">return</span> x + <span class="dv">1</span> };
+
+<span class="kw">var</span> nats = <span class="fu">streamCons</span>(
+  <span class="dv">1</span>,
+  <span class="kw">function</span> () { <span class="kw">return</span> <span class="fu">streamMap</span>(nats, increment); }
+);</code></pre>
+</div>
+<div id="stream-zipwith" class="slide section level1">
+<h1>Stream ZipWith</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamZipWith = <span class="kw">function</span> (s1, s2, f) {
+  <span class="kw">return</span> <span class="fu">streamCons</span>(
+    <span class="fu">f</span>(<span class="fu">streamHead</span>(s1), <span class="fu">streamHead</span>(s2)),
+    <span class="kw">function</span> () { <span class="kw">return</span> <span class="fu">streamZipWith</span>(<span class="fu">streamTail</span>(s1), <span class="fu">streamTail</span>(s2), f); }
+  );
+};</code></pre>
+</div>
+<div id="fibonacci-stream" class="slide section level1">
+<h1>Fibonacci Stream</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell">fibs <span class="fu">=</span> <span class="dv">0</span> <span class="fu">:</span> <span class="dv">1</span> <span class="fu">:</span> zipWith (<span class="fu">+</span>) fibs (tail fibs)</code></pre>
+</div>
+<div id="in-javascript-1" class="slide section level1">
+<h1>... in JavaScript</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> sum = <span class="kw">function</span> (x, y) { <span class="kw">return</span> x + y; };
+
+<span class="kw">var</span> fibs = <span class="fu">streamCons</span>(
+  <span class="dv">0</span>,
+  <span class="kw">function</span> () {
+    <span class="kw">return</span> <span class="fu">streamCons</span>(
+      <span class="dv">1</span>,
+      <span class="kw">function</span> () { <span class="kw">return</span> <span class="fu">streamZipWith</span>(fibs, <span class="fu">streamTail</span>(fibs), sum); }
+    );
+  }
+);</code></pre>
+</div>
+<div id="accessors" class="slide section level1">
+<h1>Accessors</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> second = <span class="fu">compose</span>(streamHead, streamTail);
+<span class="kw">var</span> third = <span class="fu">compose</span>(streamHead, <span class="fu">compose</span>(streamTail, streamTail));
+<span class="kw">var</span> fourth = <span class="fu">compose</span>(streamHead, <span class="fu">compose</span>(streamTail, <span class="fu">compose</span>(streamTail, streamTail)));
+<span class="kw">var</span> fifth = <span class="fu">compose</span>(streamHead, <span class="fu">compose</span>(streamTail, <span class="fu">compose</span>(streamTail, <span class="fu">compose</span>(streamTail, streamTail))));</code></pre>
+</div>
+<div id="tail-calls" class="slide section level1">
+<h1>Tail calls</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> drop = <span class="kw">function</span> (stream, n) {
+  <span class="kw">if</span> (n === <span class="dv">0</span>) {
+    <span class="kw">return</span> stream;
+  }
+  <span class="kw">return</span> <span class="fu">drop</span>(<span class="fu">streamTail</span>(stream), n - <span class="dv">1</span>);
+};</code></pre>
+</div>
+<div id="imperatively" class="slide section level1">
+<h1>Imperatively</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> dropImperatively = <span class="kw">function</span> (stream, n) {
+  <span class="kw">while</span> (n &gt; <span class="dv">0</span>) {
+    stream = <span class="fu">streamTail</span>(stream);
+    n = n - <span class="dv">1</span>;
+  }
+  <span class="kw">return</span> stream;
+};</code></pre>
+</div>
+<div id="trampoline-decorator" class="slide section level1">
+<h1>Trampoline Decorator</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> trampoline = <span class="kw">function</span> (f) {
+  <span class="kw">return</span> <span class="kw">function</span> (_) {
+    <span class="kw">var</span> argsList = <span class="ot">Array</span>.<span class="ot">prototype</span>.<span class="ot">slice</span>.<span class="fu">call</span>(arguments);
+    <span class="kw">var</span> result = <span class="ot">f</span>.<span class="fu">apply</span>(<span class="kw">this</span>, argsList);
+    <span class="kw">while</span> (result <span class="kw">instanceof</span> Function) { <span class="co">// result is still a thunk</span>
+      result = <span class="fu">force</span>(result);
+    }
+    <span class="kw">return</span> result;
+  };
+};</code></pre>
+</div>
+<div id="using-the-decorator" class="slide section level1">
+<h1>Using the Decorator</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> _dropTrampolined = <span class="kw">function</span> (stream, n) {
+  <span class="kw">if</span> (n === <span class="dv">0</span>) {
+    <span class="kw">return</span> stream;
+  }
+  <span class="kw">return</span> <span class="kw">function</span> () { <span class="kw">return</span> <span class="fu">_dropTrampolined</span>(<span class="fu">streamTail</span>(stream), n - <span class="dv">1</span>); };
+};
+
+<span class="kw">var</span> dropTrampolined = <span class="fu">trampoline</span>(_dropTrampolined);</code></pre>
+</div>
+<div id="caching-thunks" class="slide section level1">
+<h1>Caching Thunks</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> Thunk = <span class="kw">function</span> (item) { <span class="kw">this</span>.<span class="fu">item</span> = item };
+
+<span class="ot">Thunk</span>.<span class="ot">prototype</span>.<span class="fu">force</span> = <span class="kw">function</span> () {
+  <span class="kw">if</span> (<span class="kw">this</span>.<span class="fu">item</span> <span class="fu">instanceof</span> <span class="fu">Function</span>) {
+    <span class="kw">this</span>.<span class="fu">item</span> = <span class="kw">this</span>.<span class="fu">item</span>();
+  }
+  <span class="kw">return</span> <span class="kw">this</span>.<span class="fu">item</span>;
+};</code></pre>
+</div>
+<div id="caching-tail" class="slide section level1">
+<h1>Caching Tail</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamTail = <span class="kw">function</span> (stream) {
+  <span class="kw">return</span> <span class="fu">cdr</span>(stream).<span class="fu">force</span>();
+};</code></pre>
+</div>
+<div id="caching-map" class="slide section level1">
+<h1>Caching Map</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamMap = <span class="kw">function</span> (stream, f) {
+  <span class="kw">return</span> <span class="fu">streamCons</span>(
+    <span class="fu">f</span>(<span class="fu">streamHead</span>(stream)),
+    <span class="kw">new</span> <span class="fu">Thunk</span>(<span class="kw">function</span> () {
+      <span class="kw">return</span> <span class="fu">streamMap</span>(<span class="fu">streamTail</span>(stream), f);
+    })
+  );
+};</code></pre>
+</div>
+<div id="caching-zipwith" class="slide section level1">
+<h1>Caching ZipWith</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> streamZipWith = <span class="kw">function</span> (s1, s2, f) {
+  <span class="kw">return</span> <span class="fu">streamCons</span>(
+    <span class="fu">f</span>(<span class="fu">streamHead</span>(s1), <span class="fu">streamHead</span>(s2)),
+    <span class="kw">new</span> <span class="fu">Thunk</span>(<span class="kw">function</span> () {
+      <span class="kw">return</span> <span class="fu">streamZipWith</span>(<span class="fu">streamTail</span>(s1), <span class="fu">streamTail</span>(s2), f);
+    })
+  );
+};</code></pre>
+</div>
+<div id="caching-fibs" class="slide section level1">
+<h1>Caching Fibs</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> fibs = <span class="fu">streamCons</span>(
+  <span class="dv">0</span>,
+  <span class="kw">new</span> <span class="fu">Thunk</span>(<span class="kw">function</span> () {
+    <span class="kw">return</span> <span class="fu">streamCons</span>(
+      <span class="dv">1</span>,
+      <span class="kw">new</span> <span class="fu">Thunk</span>(<span class="kw">function</span> () {
+        <span class="kw">return</span> <span class="fu">streamZipWith</span>(fibs, <span class="fu">streamTail</span>(fibs), sum);
+      })
+    );
+  })
+)</code></pre>
+</div>
+<div id="caching-trampoline" class="slide section level1">
+<h1>Caching Trampoline</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> cachedTrampoline = <span class="kw">function</span> (f) {
+  <span class="kw">return</span> <span class="kw">function</span> (_) {
+    <span class="kw">var</span> argsList = <span class="ot">Array</span>.<span class="ot">prototype</span>.<span class="ot">slice</span>.<span class="fu">call</span>(arguments);
+    <span class="kw">var</span> result = <span class="ot">f</span>.<span class="fu">apply</span>(<span class="kw">this</span>, argsList);
+    <span class="kw">while</span> (result <span class="kw">instanceof</span> Thunk) {
+      result = <span class="ot">result</span>.<span class="fu">force</span>();
+    }
+    <span class="kw">return</span> result;
+  };
+};</code></pre>
+</div>
+<div id="caching-drop" class="slide section level1">
+<h1>Caching Drop</h1>
+<pre class="sourceCode javascript"><code class="sourceCode javascript"><span class="kw">var</span> _cachedDropTrampolined = <span class="kw">function</span> (stream, n) {
+  <span class="kw">if</span> (n === <span class="dv">0</span>) {
+    <span class="kw">return</span> stream;
+  }
+  <span class="kw">return</span> <span class="kw">new</span> <span class="fu">Thunk</span>(<span class="kw">function</span> () {
+    <span class="kw">return</span> <span class="fu">_cachedDropTrampolined</span>(<span class="fu">streamTail</span>(stream), n - <span class="dv">1</span>);
+  });
+}
+
+<span class="kw">var</span> cachedDropTrampolined = <span class="fu">cachedTrampoline</span>(_cachedDropTrampolined);</code></pre>
+</div>
+</body>
+</html>

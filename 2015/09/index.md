@@ -1,0 +1,560 @@
+---
+title: Working on the Hayoo Search Engine
+author: Erik Rantapaa
+date: HaskellMN, September 16, 2015
+---
+# The Hayoo Project
+- Search engine similar to Hoogle
+- Indexes all of Hackage
+- Search for functions, types, modules, packages
+- Search by type signature - not as good as Hoogle
+- Web interface / REST / CLI
+
+# Hunt Search Engine - Background
+- 2008 - Holumbus Framework
+  - a Master's thesis by Timo Hübel at Univeristy of Applied Sciences - Wedel
+  - a framework for building search engines in Haskell
+  - only supported off-line indexing
+- 2014 - Hunt
+  - Rewrite by Chris Reumann, Ulf Sauer and Sebastian Philipp
+  - supports on-line indexing
+- Both Hayoo and Hunt written in Haskell
+
+# Hunt Search Engine
+- JSON document store
+- Commands and responses are JSON
+- Documents identified by a unique URI
+
+# Example commands
+
+Insert command for a package:
+
+~~~ javascript
+{ "cmd":      "insert"
+, "document":
+    { "description":
+        { "author":       "Bryan O'Sullivan <bos@serpentine.com>"
+        , "category":     "Text, Web, JSON"
+        , "dependencies": [ "attoparsec", "base", ... ]
+        , "type":         "package"
+        , ...
+        },
+      "index":
+        { "author":       "Bryan Sullivan bos@serpentine.com"
+        , "category":     "Text Web JSON"
+        , "dependencies": "attoparsec base ..."
+        , "type":         "package"
+        , ...
+        },
+      "uri": "http://hackage.haskell.org/package/aeson"
+    }
+}
+~~~
+
+Index fields are basically Description fields without punctuation.
+
+# Example commands
+
+Insert command for a function:
+
+~~~ javascript
+{ "cmd":      "insert"
+, "document":
+    { "description":
+        { "name":         "encode"
+        , "description":  "<p> Efficiently serialize a JSON value ..."
+        , "package":      "aeson"
+        , "module":       ["Data.Aeson", "Data.Aeson.Encode"]
+        , "signature":    "ToJSON a => a -> ByteString"
+        , "type":         "function"
+        },
+      "index":
+        { "name":         "encode"
+        , "description":  "Efficiently serialize a JSON value ..."
+        , "package":      "aeson"
+        , "module":       "Data.Aeson.Encode"
+        , "type":         "function"
+        , "signature":    "ToJSON a => a -> ByteString"
+        , "subsig":       "ToJSON a => a -> ByteString"
+        },
+      "uri": "http://hackage.haskell.org/package/aeson/docs/Data-Aeson-Encode.html#v:encode",
+      "weight": 1.6
+    }
+}
+~~~
+
+"weight" field used to order search results, low weight means more common.
+
+# Example commands
+
+Delete command for any documents related to the package "aeson":
+
+~~~ javascript
+{
+  "cmd": "delete-by-query",
+  "query": {
+    "type": "context",
+    "contexts": [ "package" ],
+    "query": {
+      "op": "case",
+      "type": "fullword",
+      "word": "aeson"
+    }
+  }
+}
+~~~
+
+# Example commands
+
+Update command - used for updating a package's weight:
+
+~~~ javascript
+[
+  {
+    "cmd": "update",
+    "document": {
+      "uri": "http://hackage.haskell.org/package/ABList",
+      "weight": 1.6
+    }
+  },
+  {
+    "cmd": "update",
+    "document": {
+      "uri": "http://hackage.haskell.org/package/AC-Angle",
+      "weight": 2.7
+    }
+  },
+  ...
+]
+~~~
+
+Package weight is determined by a package's dependencies.
+
+Lower weight means lower on the food chain.
+
+# Generated Files
+- `00-schema.js        -` schema definition (static)
+- `01-packages.js      -` inserts for each package document
+    - approx. 8500 commands
+- `02-ranking.js       -` updates for the package weights
+- function info files:
+    - inserts for each function / type / etc. definition
+    - approx. 1 million commands spread out over 400 files
+
+# Generating a Hayoo data set
+
+* Generate `01-packages.js`
+
+```text
+    For each package:
+    - get the cabal file
+    - generate an insert command for `01-packages.js`
+    - save dependencies
+```
+
+* Use saved dependencies to generate `02-ranking.js`
+* Generate batch files:
+
+```text
+    For each package:
+      For each module / type / function defined the package:
+        - generate an insert command for the definition
+        - need to join with package rankings
+        - group commands for each batch of 20 packages into separate files.
+```
+
+# Current Problems
+- Hackage: ~ 8500 packages, ~ 1 million function + type definitions
+- Indexer scrapes data from Hackage doc pages
+- Haddock HTML changes periodically
+- Slow scrape times => infrequent index updates
+- Hayoo server only has 8 GB of memory
+- Index is a monolithic Patricia trie
+- Ongoing work to segment this trie (Alex Biehl)
+
+# Improved Process
+- Parse cabal files directly for package info
+- Parse Hoogle generated index files for function and type definitions
+- Data may be downloaded from Hackage:
+
+    `http://hackage.haskell.org/packages/index.tar.gz`
+    `http://hackage.haskell.org/packages/hoogle.tar.gz`
+
+# Hoogle Index Files
+- Generated by `haddock --hoogle ...`
+- Implemented by Neil Mitchell
+- A distillation of the definitions in a package
+- Line-oriented structure
+
+# Example
+
+The Hoogle index file for the `aeson` package:
+
+    -- | Fast JSON parsing and encoding
+    --
+    @package aeson
+    @version 0.9.0.1
+
+
+    -- | Types for working with JSON data.
+    module Data.Aeson.Types
+
+    -- | A JSON value represented as a Haskell value.
+    data Value
+    Object :: !Object -> Value
+    Array :: !Array -> Value
+    String :: !Text -> Value
+    Number :: !Scientific -> Value
+    Bool :: !Bool -> Value
+    Null :: Value
+
+    -- | A JSON "array" (sequence).
+    type Array = Vector Value
+    ...
+
+# Challenges
+- Want to use the `.tar.gz` files directly
+- Read files in a streaming fashion
+- Emit commands in a streaming fashion
+- Only process the latest cabal files for each package
+- Batch function info commands in groups of 20 packages per file
+- Lots of file handles are opened - need to make processing exception safe
+
+# Batching
+~~~ python
+# pseudo-Python code for batching:
+
+files = Tar.iterator("hoogle.tar.gz")
+i = 1
+j = 0
+path = "output-" + str(i) + ".js"
+handle = open(path, "w")
+for f in files:
+  content = ...get content for f...
+  ...process content, emit commands to handle...
+  j += 1
+  if j >= 20:
+    # start a new batch
+    close(handle)
+    i += 1
+    j = 0
+    path = "output-" + str(i) + ".js"
+    handle = open(path, "w")
+close(handle)
+~~~
+
+# Stream Processing with Pipes
+
+~~~ haskell
+-- producer: yield n, n-1, ..., 1
+
+counter :: Monad m => Producer Int m ()
+counter n | n <= 0    = return ()
+          | otherwise = do yield n; counter (n-1)
+
+-- consumer: print everything
+
+printAll :: Show a => Consumer a IO r
+printAll = forever $ do x <- await; print x
+~~~
+
+Chain pipe components with `>->`:
+
+    ghci> runEffect $ counter 10 >-> printAll
+    10 9 8 ...
+
+# Pipes Filter
+
+~~~ haskell
+onlyEven = forever $ do
+  x <- await
+  if even x
+    then yield x
+    else return ()
+~~~
+
+    ghci> runEffect $ counter 10 >-> onlyEven >-> printAll
+    10 8 6 4 ...
+
+# Reading Tar Archives
+
+~~~ haskell
+module Codec.Tar.Archive
+
+data Entries = Next Entry Entries     -- linked list of Entry
+             | Done
+             | Fail String
+
+data Entry = Entry { entryPath    :: String
+                   , entryContent :: EntryContent
+                   }
+
+data EntryContent
+  = NormalFile ByteString FileSize
+  | Directory
+  | SymbolicLink LinkTarget
+  | ...
+
+Tar.read :: ByteString -> Entries
+
+openTarArchive :: FilePath -> IO Entries
+openTarArchive path = do bs <- LBS.readFile path; return (Tar.read bs)
+                    -- = fmap Tar.read (LBS.readFile path)
+~~~
+
+# Handling Compression
+
+~~~ haskell
+import qualified Codec.Compression.GZip as GZip
+import qualified Codec.Compression.BZip as BZip
+
+tarEntriesForPath :: FilePath -> IO Entries
+tarEntriesForPath path = do
+  let decompress
+        | isSuffixOf ".bz2" path = BZip.decompress
+        | isSuffixOf ".gz" path  = GZip.decompress
+        | isSuffixOf ".tgz" path = GZip.decompress
+        | otherwise              = id
+  fmap (Tar.read . decompress) $ LBS.readFile path
+~~~
+
+# Convert `Entries` to a Pipes Producer
+
+~~~ haskell
+entriesProducer :: Monad m => Entries -> Producer Entry m ()
+entriesProducer  =
+  case entries of
+    Next ent next -> do yield ent; entriesProducer next
+    Done          -> return ()
+    Fail e        -> error e
+
+selectFiles = forever $ do
+ e <- await
+ case entryContent e of
+   NormalFile content _ -> yield (takeBaseName (entryPath e), content)
+   _                    -> return ()
+
+entriesProducer entries >-> selectFiles
+    :: Monad m => Producer (String, ByteString) m ()
+~~~
+
+Have to roll your own! No conduit / pipes library released yet.
+
+# Finding the latest cabal files
+
+Fortunately the cabal files appear in sorted order in `index.tar.gz`:
+
+    $ tar tf index.tar.gz
+    ...
+    aeson/0.1.0.0/aeson.cabal
+    aeson/0.2.0.0/aeson.cabal
+    aeson/0.3.0.0/aeson.cabal
+    aeson/0.3.1.0/aeson.cabal
+    aeson/0.3.1.1/aeson.cabal
+    aeson/0.3.2.0/aeson.cabal
+    aeson/0.3.2.1/aeson.cabal
+    ...
+
+Note: The latest version is not always the last.
+
+# Finding the latest cabal files
+
+~~~ haskell
+-- fold consecutive values which have the same first component
+
+foldValues :: (Monad m, Eq k)
+           => (v -> v -> v)        -- ^ folding operation
+           -> Producer (k, v) m r  -- ^ input stream
+           -> Producer (k, v) m r
+foldValues cmp stream = ...
+  ... find the initial run of pairs with the same first component k
+  ... combine all of the second components in the run to produce v'
+  ... yield (k, v')
+  ... repeat
+
+-- Keep only the latest cabal file for each package
+-- Assume the files in the archive are sorted by name.
+
+latestVersions entries
+    = foldValues cmp (entriesProducer entries >-> selectFiles)
+  where
+    cmp v1 v2 = ... compare the versions of v1 and v2
+                ... and keep the latest
+~~~
+
+# Hoogle Processing
+
+Each line of a Hoogle file is one of these:
+
+~~~ haskell
+data HoogleLine
+  = BlankLine
+  | Comment String               -- comment line (begins with "--")
+  | Package String               -- @package declaration
+  | Version String               -- @version declaration
+  | Module String                -- module ...
+  | Type String String String    -- type <name> <params> = ...
+  | Newtype String String        -- newtype <name> <params>
+  | FunctionDecl String String   -- <name> :: <sig>
+  | DataDecl String              -- data <name>
+  | MultiDecl [String] String    -- (a,b,c) :: <sig>
+  | BracketDecl [String] String  -- [a] :: <sig>
+  | Instance String              -- instance (...) => ...
+  | Class String                 -- class (...) => ...
+  | DataType String String       -- dataType[...] :: DataType
+  | Constr String String         -- constr[...] :: Constr
+  deriving (Show)
+~~~
+
+# Hoogle Processing
+
+Processing a single Hoogle file:
+
+- Read line-by-line as ByteStrings
+- Discard lines before the first `@package`
+- Convert each line to a `String` via `decodeUtf8`
+- Use Parsec to parse the line to a `HoogleLine`
+- Collect consecutive `Comment` lines
+- Clear seen comments after seeing a definition
+- Track `@module` statements
+- When hitting a function signature, create sub-signatures for indexing
+- Emit one or more Hunt insert commands for each definition
+- Filter duplicate uris
+
+# Hoogle Processing Pipeline
+
+~~~ haskell
+processHoogle  :: (String -> Maybe Float)   -- ^ Score function
+               -> J.UTCTime                 -- ^ Index time
+               -> ByteString                -- ^ The Hoogle file
+               -> Handle                    -- ^ Output file handle
+               -> IO ()
+processHoogle  scoreFn now content fh = do
+  evalHState $ skipHeader content
+                 >-> toHoogleLine
+                 >-> toFunctionInfo
+                 >-> removeDupURIs
+                 >-> toCommands scoreFn now
+                 >-> emitCommaJson fh
+
+evalHState pipeline = evalStateT (runEffect pipeline) initialHState
+
+data HState =
+  HState { h_moduleName :: String    -- current module
+         , h_package    :: String    -- current package
+         , h_comments   :: [String]  -- comment lines preceding a definition
+         }
+~~~
+# Local State
+
+`Pipes.Lift.evalStateP` creates state which is local to 
+a pipe segment.
+
+~~~ haskell
+import qualified Pipes.Lift as PL
+import qualified Data.Set as Set
+
+removeDupURIs = PL.evalStateP Set.empty go
+  where go = forever $ do
+               item@(name, fi) <- await
+               seen <- get
+               let uri = docURI fi
+               if Set.member uri seen
+                 then return ()
+                 else do put (Set.insert uri seen)
+                         yield item
+~~~
+
+Can also make `HState` in the previous slide local state.
+
+# Batching with Pipes
+
+~~~ haskell
+import Control.Lens (view)
+import Pipes.Group (chunksOf)
+
+chunksOf :: Monad m
+         => Int
+         -> Lens (Producer a m x)
+                 (Producer b m x)
+                 (FreeT (Producer a m) m x)
+                 (FreeT (Producer b m) m x)
+
+
+view (chunksOf 20) :: Monad m
+                   => Producer a m x
+                   -> FreeT (Producer a m) a x
+~~~
+
+`FreeT (Producer a m) m x` is just a linked list of Producers.
+
+Traversing a producer in chunks of 20 elements:
+
+~~~ haskell
+let f1 = view (chunksOf 20) producer
+x1 <- runFreeT f1
+case x1 of
+  Pure r  -> return r                    -- no more elements
+  Free p1 -> do                          -- p1 = first 20 elements
+    f2 <- runEffect (p1 >-> ...)         -- use p1 in a pipe line
+    x2 <- runFreeT f2
+    case x2 of
+      Pure r  -> return r                -- no more elements
+      Free p2 -> do                      -- p2 = next 20 elements
+        f3 <- runEffect (p2 >-> ...)     -- use p2 in a pipe line
+        x3 <- runFreeT f3
+        ...
+~~~
+
+Note: Input is not demanded from the producer until it is actually needed.
+
+# Numbered Batching
+
+Keeping track of which batch we're on:
+
+~~~ haskell
+chunkLoop batchSize action files
+    = loop 1 (view (chunksOf batchSize) files)
+  where loop n f = do x <- runFreeT f
+                      case x of
+                        Pure r -> return r
+                        Free p -> do f' <-  action n p; loop (n+1) f'
+
+processHoogleBatched batchSize hoogleTarPath = do
+  -- create a stream of files in the archive:
+  files <- filesInTarArchive hoogleTarPath
+  chunkLoop batchSize action files
+
+  where
+    action n pipeline = do
+      let path = "batch-" ++ show n ++ ".js"
+      -- withFile closes handle if exception is thrown
+      r <- withFile path WriteMode $ \h -> do
+             runEffect $ pipeline >-> for cat (go h)
+      -- chunkLoop uses this return value
+      -- Note: r really comes from runEffect
+      return r
+
+   go h (pkgName, content) = do
+     ... process a single Hoogle file...
+     ... emit commands to file handle h...
+~~~
+
+# Results
+- Processing time now about 5 mins for both cabal and hoogle files
+- About 100x faster than scraping
+
+# Summary
+- Pipes was indespensible for managing the complexity of this program
+- Learned a lot about Monad transformer stacks: `StateT`, `FreeT`
+- Learned a lot about lenses
+- Good exercise in processing files in a streaming fashion
+- Iterating through a tar archive still uses lazy-I/O; should be Pipes/Conduit-based
+- Can encounter some complex types when using `pipes`:
+
+    `Producer a m r`
+
+    `Producer a m (Producer a m r)`
+
+    `FreeT (Producer a m) m r`
+

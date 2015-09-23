@@ -1,0 +1,571 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+ "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <meta name="author" content="Erik Rantapaa" />
+  <title>Working on the Hayoo Search Engine</title>
+  <style type="text/css">code{white-space: pre;}</style>
+  <style type="text/css">
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { color: #007020; font-weight: bold; }
+code > span.dt { color: #902000; }
+code > span.dv { color: #40a070; }
+code > span.bn { color: #40a070; }
+code > span.fl { color: #40a070; }
+code > span.ch { color: #4070a0; }
+code > span.st { color: #4070a0; }
+code > span.co { color: #60a0b0; font-style: italic; }
+code > span.ot { color: #007020; }
+code > span.al { color: #ff0000; font-weight: bold; }
+code > span.fu { color: #06287e; }
+code > span.er { color: #ff0000; font-weight: bold; }
+  </style>
+  <link rel="stylesheet" type="text/css" media="screen, projection, print"
+    href="http://www.w3.org/Talks/Tools/Slidy2/styles/slidy.css" />
+  <script src="http://www.w3.org/Talks/Tools/Slidy2/scripts/slidy.js"
+    charset="utf-8" type="text/javascript"></script>
+</head>
+<body>
+<div class="slide titlepage">
+  <h1 class="title">Working on the Hayoo Search Engine</h1>
+  <p class="author">
+Erik Rantapaa
+  </p>
+  <p class="date">HaskellMN, September 16, 2015</p>
+</div>
+<div id="the-hayoo-project" class="slide section level1">
+<h1>The Hayoo Project</h1>
+<ul class="incremental">
+<li>Search engine similar to Hoogle</li>
+<li>Indexes all of Hackage</li>
+<li>Search for functions, types, modules, packages</li>
+<li>Search by type signature - not as good as Hoogle</li>
+<li>Web interface / REST / CLI</li>
+</ul>
+</div>
+<div id="hunt-search-engine---background" class="slide section level1">
+<h1>Hunt Search Engine - Background</h1>
+<ul class="incremental">
+<li>2008 - Holumbus Framework</li>
+<li>a Master's thesis by Timo Hübel at Univeristy of Applied Sciences - Wedel</li>
+<li>a framework for building search engines in Haskell</li>
+<li>only supported off-line indexing</li>
+<li>2014 - Hunt</li>
+<li>Rewrite by Chris Reumann, Ulf Sauer and Sebastian Philipp</li>
+<li>supports on-line indexing</li>
+<li>Both Hayoo and Hunt written in Haskell</li>
+</ul>
+</div>
+<div id="hunt-search-engine" class="slide section level1">
+<h1>Hunt Search Engine</h1>
+<ul class="incremental">
+<li>JSON document store</li>
+<li>Commands and responses are JSON</li>
+<li>Documents identified by a unique URI</li>
+</ul>
+</div>
+<div id="example-commands" class="slide section level1">
+<h1>Example commands</h1>
+<p>Insert command for a package:</p>
+<pre class="sourceCode javascript"><code class="sourceCode javascript">{ <span class="st">&quot;cmd&quot;</span>:      <span class="st">&quot;insert&quot;</span>
+, <span class="st">&quot;document&quot;</span>:
+    { <span class="st">&quot;description&quot;</span>:
+        { <span class="st">&quot;author&quot;</span>:       <span class="st">&quot;Bryan O&#39;Sullivan &lt;bos@serpentine.com&gt;&quot;</span>
+        , <span class="st">&quot;category&quot;</span>:     <span class="st">&quot;Text, Web, JSON&quot;</span>
+        , <span class="st">&quot;dependencies&quot;</span>: [ <span class="st">&quot;attoparsec&quot;</span>, <span class="st">&quot;base&quot;</span>, ... ]
+        , <span class="st">&quot;type&quot;</span>:         <span class="st">&quot;package&quot;</span>
+        , ...
+        },
+      <span class="st">&quot;index&quot;</span>:
+        { <span class="st">&quot;author&quot;</span>:       <span class="st">&quot;Bryan Sullivan bos@serpentine.com&quot;</span>
+        , <span class="st">&quot;category&quot;</span>:     <span class="st">&quot;Text Web JSON&quot;</span>
+        , <span class="st">&quot;dependencies&quot;</span>: <span class="st">&quot;attoparsec base ...&quot;</span>
+        , <span class="st">&quot;type&quot;</span>:         <span class="st">&quot;package&quot;</span>
+        , ...
+        },
+      <span class="st">&quot;uri&quot;</span>: <span class="st">&quot;http://hackage.haskell.org/package/aeson&quot;</span>
+    }
+}</code></pre>
+<p>Index fields are basically Description fields without punctuation.</p>
+</div>
+<div id="example-commands-1" class="slide section level1">
+<h1>Example commands</h1>
+<p>Insert command for a function:</p>
+<pre class="sourceCode javascript"><code class="sourceCode javascript">{ <span class="st">&quot;cmd&quot;</span>:      <span class="st">&quot;insert&quot;</span>
+, <span class="st">&quot;document&quot;</span>:
+    { <span class="st">&quot;description&quot;</span>:
+        { <span class="st">&quot;name&quot;</span>:         <span class="st">&quot;encode&quot;</span>
+        , <span class="st">&quot;description&quot;</span>:  <span class="st">&quot;&lt;p&gt; Efficiently serialize a JSON value ...&quot;</span>
+        , <span class="st">&quot;package&quot;</span>:      <span class="st">&quot;aeson&quot;</span>
+        , <span class="st">&quot;module&quot;</span>:       [<span class="st">&quot;Data.Aeson&quot;</span>, <span class="st">&quot;Data.Aeson.Encode&quot;</span>]
+        , <span class="st">&quot;signature&quot;</span>:    <span class="st">&quot;ToJSON a =&gt; a -&gt; ByteString&quot;</span>
+        , <span class="st">&quot;type&quot;</span>:         <span class="st">&quot;function&quot;</span>
+        },
+      <span class="st">&quot;index&quot;</span>:
+        { <span class="st">&quot;name&quot;</span>:         <span class="st">&quot;encode&quot;</span>
+        , <span class="st">&quot;description&quot;</span>:  <span class="st">&quot;Efficiently serialize a JSON value ...&quot;</span>
+        , <span class="st">&quot;package&quot;</span>:      <span class="st">&quot;aeson&quot;</span>
+        , <span class="st">&quot;module&quot;</span>:       <span class="st">&quot;Data.Aeson.Encode&quot;</span>
+        , <span class="st">&quot;type&quot;</span>:         <span class="st">&quot;function&quot;</span>
+        , <span class="st">&quot;signature&quot;</span>:    <span class="st">&quot;ToJSON a =&gt; a -&gt; ByteString&quot;</span>
+        , <span class="st">&quot;subsig&quot;</span>:       <span class="st">&quot;ToJSON a =&gt; a -&gt; ByteString&quot;</span>
+        },
+      <span class="st">&quot;uri&quot;</span>: <span class="st">&quot;http://hackage.haskell.org/package/aeson/docs/Data-Aeson-Encode.html#v:encode&quot;</span>,
+      <span class="st">&quot;weight&quot;</span>: <span class="fl">1.6</span>
+    }
+}</code></pre>
+<p>&quot;weight&quot; field used to order search results, low weight means more common.</p>
+</div>
+<div id="example-commands-2" class="slide section level1">
+<h1>Example commands</h1>
+<p>Delete command for any documents related to the package &quot;aeson&quot;:</p>
+<pre class="sourceCode javascript"><code class="sourceCode javascript">{
+  <span class="st">&quot;cmd&quot;</span>: <span class="st">&quot;delete-by-query&quot;</span>,
+  <span class="st">&quot;query&quot;</span>: {
+    <span class="st">&quot;type&quot;</span>: <span class="st">&quot;context&quot;</span>,
+    <span class="st">&quot;contexts&quot;</span>: [ <span class="st">&quot;package&quot;</span> ],
+    <span class="st">&quot;query&quot;</span>: {
+      <span class="st">&quot;op&quot;</span>: <span class="st">&quot;case&quot;</span>,
+      <span class="st">&quot;type&quot;</span>: <span class="st">&quot;fullword&quot;</span>,
+      <span class="st">&quot;word&quot;</span>: <span class="st">&quot;aeson&quot;</span>
+    }
+  }
+}</code></pre>
+</div>
+<div id="example-commands-3" class="slide section level1">
+<h1>Example commands</h1>
+<p>Update command - used for updating a package's weight:</p>
+<pre class="sourceCode javascript"><code class="sourceCode javascript">[
+  {
+    <span class="st">&quot;cmd&quot;</span>: <span class="st">&quot;update&quot;</span>,
+    <span class="st">&quot;document&quot;</span>: {
+      <span class="st">&quot;uri&quot;</span>: <span class="st">&quot;http://hackage.haskell.org/package/ABList&quot;</span>,
+      <span class="st">&quot;weight&quot;</span>: <span class="fl">1.6</span>
+    }
+  },
+  {
+    <span class="st">&quot;cmd&quot;</span>: <span class="st">&quot;update&quot;</span>,
+    <span class="st">&quot;document&quot;</span>: {
+      <span class="st">&quot;uri&quot;</span>: <span class="st">&quot;http://hackage.haskell.org/package/AC-Angle&quot;</span>,
+      <span class="st">&quot;weight&quot;</span>: <span class="fl">2.7</span>
+    }
+  },
+  ...
+]</code></pre>
+<p>Package weight is determined by a package's dependencies.</p>
+<p>Lower weight means lower on the food chain.</p>
+</div>
+<div id="generated-files" class="slide section level1">
+<h1>Generated Files</h1>
+<ul class="incremental">
+<li><code>00-schema.js        -</code> schema definition (static)</li>
+<li><code>01-packages.js      -</code> inserts for each package document
+<ul class="incremental">
+<li>approx. 8500 commands</li>
+</ul></li>
+<li><code>02-ranking.js       -</code> updates for the package weights</li>
+<li>function info files:
+<ul class="incremental">
+<li>inserts for each function / type / etc. definition</li>
+<li>approx. 1 million commands spread out over 400 files</li>
+</ul></li>
+</ul>
+</div>
+<div id="generating-a-hayoo-data-set" class="slide section level1">
+<h1>Generating a Hayoo data set</h1>
+<ul class="incremental">
+<li>Generate <code>01-packages.js</code></li>
+</ul>
+<pre class="text"><code>    For each package:
+    - get the cabal file
+    - generate an insert command for `01-packages.js`
+    - save dependencies</code></pre>
+<ul class="incremental">
+<li>Use saved dependencies to generate <code>02-ranking.js</code></li>
+<li>Generate batch files:</li>
+</ul>
+<pre class="text"><code>    For each package:
+      For each module / type / function defined the package:
+        - generate an insert command for the definition
+        - need to join with package rankings
+        - group commands for each batch of 20 packages into separate files.</code></pre>
+</div>
+<div id="current-problems" class="slide section level1">
+<h1>Current Problems</h1>
+<ul class="incremental">
+<li>Hackage: ~ 8500 packages, ~ 1 million function + type definitions</li>
+<li>Indexer scrapes data from Hackage doc pages</li>
+<li>Haddock HTML changes periodically</li>
+<li>Slow scrape times =&gt; infrequent index updates</li>
+<li>Hayoo server only has 8 GB of memory</li>
+<li>Index is a monolithic Patricia trie</li>
+<li>Ongoing work to segment this trie (Alex Biehl)</li>
+</ul>
+</div>
+<div id="improved-process" class="slide section level1">
+<h1>Improved Process</h1>
+<ul class="incremental">
+<li>Parse cabal files directly for package info</li>
+<li>Parse Hoogle generated index files for function and type definitions</li>
+<li><p>Data may be downloaded from Hackage:</p>
+<p><code>http://hackage.haskell.org/packages/index.tar.gz</code> <code>http://hackage.haskell.org/packages/hoogle.tar.gz</code></p></li>
+</ul>
+</div>
+<div id="hoogle-index-files" class="slide section level1">
+<h1>Hoogle Index Files</h1>
+<ul class="incremental">
+<li>Generated by <code>haddock --hoogle ...</code></li>
+<li>Implemented by Neil Mitchell</li>
+<li>A distillation of the definitions in a package</li>
+<li>Line-oriented structure</li>
+</ul>
+</div>
+<div id="example" class="slide section level1">
+<h1>Example</h1>
+<p>The Hoogle index file for the <code>aeson</code> package:</p>
+<pre><code>-- | Fast JSON parsing and encoding
+--
+@package aeson
+@version 0.9.0.1
+
+
+-- | Types for working with JSON data.
+module Data.Aeson.Types
+
+-- | A JSON value represented as a Haskell value.
+data Value
+Object :: !Object -&gt; Value
+Array :: !Array -&gt; Value
+String :: !Text -&gt; Value
+Number :: !Scientific -&gt; Value
+Bool :: !Bool -&gt; Value
+Null :: Value
+
+-- | A JSON &quot;array&quot; (sequence).
+type Array = Vector Value
+...</code></pre>
+</div>
+<div id="challenges" class="slide section level1">
+<h1>Challenges</h1>
+<ul class="incremental">
+<li>Want to use the <code>.tar.gz</code> files directly</li>
+<li>Read files in a streaming fashion</li>
+<li>Emit commands in a streaming fashion</li>
+<li>Only process the latest cabal files for each package</li>
+<li>Batch function info commands in groups of 20 packages per file</li>
+<li>Lots of file handles are opened - need to make processing exception safe</li>
+</ul>
+</div>
+<div id="batching" class="slide section level1">
+<h1>Batching</h1>
+<pre class="sourceCode python"><code class="sourceCode python"><span class="co"># pseudo-Python code for batching:</span>
+
+files = Tar.iterator(<span class="st">&quot;hoogle.tar.gz&quot;</span>)
+i = <span class="dv">1</span>
+j = <span class="dv">0</span>
+path = <span class="st">&quot;output-&quot;</span> + <span class="dt">str</span>(i) + <span class="st">&quot;.js&quot;</span>
+handle = <span class="dt">open</span>(path, <span class="st">&quot;w&quot;</span>)
+<span class="kw">for</span> f in files:
+  content = ...get content <span class="kw">for</span> f...
+  ...process content, emit commands to handle...
+  j += <span class="dv">1</span>
+  <span class="kw">if</span> j &gt;= <span class="dv">20</span>:
+    <span class="co"># start a new batch</span>
+    close(handle)
+    i += <span class="dv">1</span>
+    j = <span class="dv">0</span>
+    path = <span class="st">&quot;output-&quot;</span> + <span class="dt">str</span>(i) + <span class="st">&quot;.js&quot;</span>
+    handle = <span class="dt">open</span>(path, <span class="st">&quot;w&quot;</span>)
+close(handle)</code></pre>
+</div>
+<div id="stream-processing-with-pipes" class="slide section level1">
+<h1>Stream Processing with Pipes</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- producer: yield n, n-1, ..., 1</span>
+
+<span class="ot">counter ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> <span class="dt">Producer</span> <span class="dt">Int</span> m ()
+counter n <span class="fu">|</span> n <span class="fu">&lt;=</span> <span class="dv">0</span>    <span class="fu">=</span> return ()
+          <span class="fu">|</span> otherwise <span class="fu">=</span> <span class="kw">do</span> yield n; counter (n<span class="fu">-</span><span class="dv">1</span>)
+
+<span class="co">-- consumer: print everything</span>
+
+<span class="ot">printAll ::</span> <span class="dt">Show</span> a <span class="ot">=&gt;</span> <span class="dt">Consumer</span> a <span class="dt">IO</span> r
+printAll <span class="fu">=</span> forever <span class="fu">$</span> <span class="kw">do</span> x <span class="ot">&lt;-</span> await; print x</code></pre>
+<p>Chain pipe components with <code>&gt;-&gt;</code>:</p>
+<pre><code>ghci&gt; runEffect $ counter 10 &gt;-&gt; printAll
+10 9 8 ...</code></pre>
+</div>
+<div id="pipes-filter" class="slide section level1">
+<h1>Pipes Filter</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell">onlyEven <span class="fu">=</span> forever <span class="fu">$</span> <span class="kw">do</span>
+  x <span class="ot">&lt;-</span> await
+  <span class="kw">if</span> even x
+    <span class="kw">then</span> yield x
+    <span class="kw">else</span> return ()</code></pre>
+<pre><code>ghci&gt; runEffect $ counter 10 &gt;-&gt; onlyEven &gt;-&gt; printAll
+10 8 6 4 ...</code></pre>
+</div>
+<div id="reading-tar-archives" class="slide section level1">
+<h1>Reading Tar Archives</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">module</span> <span class="dt">Codec.Tar.Archive</span>
+
+<span class="kw">data</span> <span class="dt">Entries</span> <span class="fu">=</span> <span class="dt">Next</span> <span class="dt">Entry</span> <span class="dt">Entries</span>     <span class="co">-- linked list of Entry</span>
+             <span class="fu">|</span> <span class="dt">Done</span>
+             <span class="fu">|</span> <span class="dt">Fail</span> <span class="dt">String</span>
+
+<span class="kw">data</span> <span class="dt">Entry</span> <span class="fu">=</span> <span class="dt">Entry</span> {<span class="ot"> entryPath    ::</span> <span class="dt">String</span>
+                   ,<span class="ot"> entryContent ::</span> <span class="dt">EntryContent</span>
+                   }
+
+<span class="kw">data</span> <span class="dt">EntryContent</span>
+  <span class="fu">=</span> <span class="dt">NormalFile</span> <span class="dt">ByteString</span> <span class="dt">FileSize</span>
+  <span class="fu">|</span> <span class="dt">Directory</span>
+  <span class="fu">|</span> <span class="dt">SymbolicLink</span> <span class="dt">LinkTarget</span>
+  <span class="fu">|</span> <span class="fu">...</span>
+
+Tar.read<span class="ot"> ::</span> <span class="dt">ByteString</span> <span class="ot">-&gt;</span> <span class="dt">Entries</span>
+
+<span class="ot">openTarArchive ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Entries</span>
+openTarArchive path <span class="fu">=</span> <span class="kw">do</span> bs <span class="ot">&lt;-</span> LBS.readFile path; return (Tar.read bs)
+                    <span class="co">-- = fmap Tar.read (LBS.readFile path)</span></code></pre>
+</div>
+<div id="handling-compression" class="slide section level1">
+<h1>Handling Compression</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Codec.Compression.GZip</span> <span class="kw">as</span> <span class="dt">GZip</span>
+<span class="kw">import qualified</span> <span class="dt">Codec.Compression.BZip</span> <span class="kw">as</span> <span class="dt">BZip</span>
+
+<span class="ot">tarEntriesForPath ::</span> <span class="dt">FilePath</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Entries</span>
+tarEntriesForPath path <span class="fu">=</span> <span class="kw">do</span>
+  <span class="kw">let</span> decompress
+        <span class="fu">|</span> isSuffixOf <span class="st">&quot;.bz2&quot;</span> path <span class="fu">=</span> BZip.decompress
+        <span class="fu">|</span> isSuffixOf <span class="st">&quot;.gz&quot;</span> path  <span class="fu">=</span> GZip.decompress
+        <span class="fu">|</span> isSuffixOf <span class="st">&quot;.tgz&quot;</span> path <span class="fu">=</span> GZip.decompress
+        <span class="fu">|</span> otherwise              <span class="fu">=</span> id
+  fmap (Tar.read <span class="fu">.</span> decompress) <span class="fu">$</span> LBS.readFile path</code></pre>
+</div>
+<div id="convert-entries-to-a-pipes-producer" class="slide section level1">
+<h1>Convert <code>Entries</code> to a Pipes Producer</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">entriesProducer ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> <span class="dt">Entries</span> <span class="ot">-&gt;</span> <span class="dt">Producer</span> <span class="dt">Entry</span> m ()
+entriesProducer  <span class="fu">=</span>
+  <span class="kw">case</span> entries <span class="kw">of</span>
+    <span class="dt">Next</span> ent next <span class="ot">-&gt;</span> <span class="kw">do</span> yield ent; entriesProducer next
+    <span class="dt">Done</span>          <span class="ot">-&gt;</span> return ()
+    <span class="dt">Fail</span> e        <span class="ot">-&gt;</span> error e
+
+selectFiles <span class="fu">=</span> forever <span class="fu">$</span> <span class="kw">do</span>
+ e <span class="ot">&lt;-</span> await
+ <span class="kw">case</span> entryContent e <span class="kw">of</span>
+   <span class="dt">NormalFile</span> content _ <span class="ot">-&gt;</span> yield (takeBaseName (entryPath e), content)
+   _                    <span class="ot">-&gt;</span> return ()
+
+entriesProducer entries <span class="fu">&gt;-&gt;</span> selectFiles
+<span class="ot">    ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> <span class="dt">Producer</span> (<span class="dt">String</span>, <span class="dt">ByteString</span>) m ()</code></pre>
+<p>Have to roll your own! No conduit / pipes library released yet.</p>
+</div>
+<div id="finding-the-latest-cabal-files" class="slide section level1">
+<h1>Finding the latest cabal files</h1>
+<p>Fortunately the cabal files appear in sorted order in <code>index.tar.gz</code>:</p>
+<pre><code>$ tar tf index.tar.gz
+...
+aeson/0.1.0.0/aeson.cabal
+aeson/0.2.0.0/aeson.cabal
+aeson/0.3.0.0/aeson.cabal
+aeson/0.3.1.0/aeson.cabal
+aeson/0.3.1.1/aeson.cabal
+aeson/0.3.2.0/aeson.cabal
+aeson/0.3.2.1/aeson.cabal
+...</code></pre>
+<p>Note: The latest version is not always the last.</p>
+</div>
+<div id="finding-the-latest-cabal-files-1" class="slide section level1">
+<h1>Finding the latest cabal files</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- fold consecutive values which have the same first component</span>
+
+<span class="ot">foldValues ::</span> (<span class="dt">Monad</span> m, <span class="dt">Eq</span> k)
+           <span class="ot">=&gt;</span> (v <span class="ot">-&gt;</span> v <span class="ot">-&gt;</span> v)        <span class="co">-- ^ folding operation</span>
+           <span class="ot">-&gt;</span> <span class="dt">Producer</span> (k, v) m r  <span class="co">-- ^ input stream</span>
+           <span class="ot">-&gt;</span> <span class="dt">Producer</span> (k, v) m r
+foldValues cmp stream <span class="fu">=</span> <span class="fu">...</span>
+  <span class="fu">...</span> find the initial run <span class="kw">of</span> pairs with the same first component k
+  <span class="fu">...</span> combine all <span class="kw">of</span> the second components <span class="kw">in</span> the run to produce v&#39;
+  <span class="fu">...</span> yield (k, v&#39;)
+  <span class="fu">...</span> repeat
+
+<span class="co">-- Keep only the latest cabal file for each package</span>
+<span class="co">-- Assume the files in the archive are sorted by name.</span>
+
+latestVersions entries
+    <span class="fu">=</span> foldValues cmp (entriesProducer entries <span class="fu">&gt;-&gt;</span> selectFiles)
+  <span class="kw">where</span>
+    cmp v1 v2 <span class="fu">=</span> <span class="fu">...</span> compare the versions <span class="kw">of</span> v1 and v2
+                <span class="fu">...</span> and keep the latest</code></pre>
+</div>
+<div id="hoogle-processing" class="slide section level1">
+<h1>Hoogle Processing</h1>
+<p>Each line of a Hoogle file is one of these:</p>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">HoogleLine</span>
+  <span class="fu">=</span> <span class="dt">BlankLine</span>
+  <span class="fu">|</span> <span class="dt">Comment</span> <span class="dt">String</span>               <span class="co">-- comment line (begins with &quot;--&quot;)</span>
+  <span class="fu">|</span> <span class="dt">Package</span> <span class="dt">String</span>               <span class="co">-- @package declaration</span>
+  <span class="fu">|</span> <span class="dt">Version</span> <span class="dt">String</span>               <span class="co">-- @version declaration</span>
+  <span class="fu">|</span> <span class="dt">Module</span> <span class="dt">String</span>                <span class="co">-- module ...</span>
+  <span class="fu">|</span> <span class="dt">Type</span> <span class="dt">String</span> <span class="dt">String</span> <span class="dt">String</span>    <span class="co">-- type &lt;name&gt; &lt;params&gt; = ...</span>
+  <span class="fu">|</span> <span class="dt">Newtype</span> <span class="dt">String</span> <span class="dt">String</span>        <span class="co">-- newtype &lt;name&gt; &lt;params&gt;</span>
+  <span class="fu">|</span> <span class="dt">FunctionDecl</span> <span class="dt">String</span> <span class="dt">String</span>   <span class="co">-- &lt;name&gt; :: &lt;sig&gt;</span>
+  <span class="fu">|</span> <span class="dt">DataDecl</span> <span class="dt">String</span>              <span class="co">-- data &lt;name&gt;</span>
+  <span class="fu">|</span> <span class="dt">MultiDecl</span> [<span class="dt">String</span>] <span class="dt">String</span>    <span class="co">-- (a,b,c) :: &lt;sig&gt;</span>
+  <span class="fu">|</span> <span class="dt">BracketDecl</span> [<span class="dt">String</span>] <span class="dt">String</span>  <span class="co">-- [a] :: &lt;sig&gt;</span>
+  <span class="fu">|</span> <span class="dt">Instance</span> <span class="dt">String</span>              <span class="co">-- instance (...) =&gt; ...</span>
+  <span class="fu">|</span> <span class="dt">Class</span> <span class="dt">String</span>                 <span class="co">-- class (...) =&gt; ...</span>
+  <span class="fu">|</span> <span class="dt">DataType</span> <span class="dt">String</span> <span class="dt">String</span>       <span class="co">-- dataType[...] :: DataType</span>
+  <span class="fu">|</span> <span class="dt">Constr</span> <span class="dt">String</span> <span class="dt">String</span>         <span class="co">-- constr[...] :: Constr</span>
+  <span class="kw">deriving</span> (<span class="dt">Show</span>)</code></pre>
+</div>
+<div id="hoogle-processing-1" class="slide section level1">
+<h1>Hoogle Processing</h1>
+<p>Processing a single Hoogle file:</p>
+<ul class="incremental">
+<li>Read line-by-line as ByteStrings</li>
+<li>Discard lines before the first <code>@package</code></li>
+<li>Convert each line to a <code>String</code> via <code>decodeUtf8</code></li>
+<li>Use Parsec to parse the line to a <code>HoogleLine</code></li>
+<li>Collect consecutive <code>Comment</code> lines</li>
+<li>Clear seen comments after seeing a definition</li>
+<li>Track <code>@module</code> statements</li>
+<li>When hitting a function signature, create sub-signatures for indexing</li>
+<li>Emit one or more Hunt insert commands for each definition</li>
+<li>Filter duplicate uris</li>
+</ul>
+</div>
+<div id="hoogle-processing-pipeline" class="slide section level1">
+<h1>Hoogle Processing Pipeline</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">processHoogle  ::</span> (<span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Maybe</span> <span class="dt">Float</span>)   <span class="co">-- ^ Score function</span>
+               <span class="ot">-&gt;</span> <span class="dt">J.UTCTime</span>                 <span class="co">-- ^ Index time</span>
+               <span class="ot">-&gt;</span> <span class="dt">ByteString</span>                <span class="co">-- ^ The Hoogle file</span>
+               <span class="ot">-&gt;</span> <span class="dt">Handle</span>                    <span class="co">-- ^ Output file handle</span>
+               <span class="ot">-&gt;</span> <span class="dt">IO</span> ()
+processHoogle  scoreFn now content fh <span class="fu">=</span> <span class="kw">do</span>
+  evalHState <span class="fu">$</span> skipHeader content
+                 <span class="fu">&gt;-&gt;</span> toHoogleLine
+                 <span class="fu">&gt;-&gt;</span> toFunctionInfo
+                 <span class="fu">&gt;-&gt;</span> removeDupURIs
+                 <span class="fu">&gt;-&gt;</span> toCommands scoreFn now
+                 <span class="fu">&gt;-&gt;</span> emitCommaJson fh
+
+evalHState pipeline <span class="fu">=</span> evalStateT (runEffect pipeline) initialHState
+
+<span class="kw">data</span> <span class="dt">HState</span> <span class="fu">=</span>
+  <span class="dt">HState</span> {<span class="ot"> h_moduleName ::</span> <span class="dt">String</span>    <span class="co">-- current module</span>
+         ,<span class="ot"> h_package    ::</span> <span class="dt">String</span>    <span class="co">-- current package</span>
+         ,<span class="ot"> h_comments   ::</span> [<span class="dt">String</span>]  <span class="co">-- comment lines preceding a definition</span>
+         }</code></pre>
+</div>
+<div id="local-state" class="slide section level1">
+<h1>Local State</h1>
+<p><code>Pipes.Lift.evalStateP</code> creates state which is local to a pipe segment.</p>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Pipes.Lift</span> <span class="kw">as</span> <span class="dt">PL</span>
+<span class="kw">import qualified</span> <span class="dt">Data.Set</span> <span class="kw">as</span> <span class="dt">Set</span>
+
+removeDupURIs <span class="fu">=</span> PL.evalStateP Set.empty go
+  <span class="kw">where</span> go <span class="fu">=</span> forever <span class="fu">$</span> <span class="kw">do</span>
+               item<span class="fu">@</span>(name, fi) <span class="ot">&lt;-</span> await
+               seen <span class="ot">&lt;-</span> get
+               <span class="kw">let</span> uri <span class="fu">=</span> docURI fi
+               <span class="kw">if</span> Set.member uri seen
+                 <span class="kw">then</span> return ()
+                 <span class="kw">else</span> <span class="kw">do</span> put (Set.insert uri seen)
+                         yield item</code></pre>
+<p>Can also make <code>HState</code> in the previous slide local state.</p>
+</div>
+<div id="batching-with-pipes" class="slide section level1">
+<h1>Batching with Pipes</h1>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Lens</span> (view)
+<span class="kw">import </span><span class="dt">Pipes.Group</span> (chunksOf)
+
+<span class="ot">chunksOf ::</span> <span class="dt">Monad</span> m
+         <span class="ot">=&gt;</span> <span class="dt">Int</span>
+         <span class="ot">-&gt;</span> <span class="dt">Lens</span> (<span class="dt">Producer</span> a m x)
+                 (<span class="dt">Producer</span> b m x)
+                 (<span class="dt">FreeT</span> (<span class="dt">Producer</span> a m) m x)
+                 (<span class="dt">FreeT</span> (<span class="dt">Producer</span> b m) m x)
+
+
+view (chunksOf <span class="dv">20</span>)<span class="ot"> ::</span> <span class="dt">Monad</span> m
+                   <span class="ot">=&gt;</span> <span class="dt">Producer</span> a m x
+                   <span class="ot">-&gt;</span> <span class="dt">FreeT</span> (<span class="dt">Producer</span> a m) a x</code></pre>
+<p><code>FreeT (Producer a m) m x</code> is just a linked list of Producers.</p>
+<p>Traversing a producer in chunks of 20 elements:</p>
+<pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">let</span> f1 <span class="fu">=</span> view (chunksOf <span class="dv">20</span>) producer
+x1 <span class="ot">&lt;-</span> runFreeT f1
+<span class="kw">case</span> x1 <span class="kw">of</span>
+  <span class="dt">Pure</span> r  <span class="ot">-&gt;</span> return r                    <span class="co">-- no more elements</span>
+  <span class="dt">Free</span> p1 <span class="ot">-&gt;</span> <span class="kw">do</span>                          <span class="co">-- p1 = first 20 elements</span>
+    f2 <span class="ot">&lt;-</span> runEffect (p1 <span class="fu">&gt;-&gt;</span> <span class="fu">...</span>)         <span class="co">-- use p1 in a pipe line</span>
+    x2 <span class="ot">&lt;-</span> runFreeT f2
+    <span class="kw">case</span> x2 <span class="kw">of</span>
+      <span class="dt">Pure</span> r  <span class="ot">-&gt;</span> return r                <span class="co">-- no more elements</span>
+      <span class="dt">Free</span> p2 <span class="ot">-&gt;</span> <span class="kw">do</span>                      <span class="co">-- p2 = next 20 elements</span>
+        f3 <span class="ot">&lt;-</span> runEffect (p2 <span class="fu">&gt;-&gt;</span> <span class="fu">...</span>)     <span class="co">-- use p2 in a pipe line</span>
+        x3 <span class="ot">&lt;-</span> runFreeT f3
+        <span class="fu">...</span></code></pre>
+<p>Note: Input is not demanded from the producer until it is actually needed.</p>
+</div>
+<div id="numbered-batching" class="slide section level1">
+<h1>Numbered Batching</h1>
+<p>Keeping track of which batch we're on:</p>
+<pre class="sourceCode haskell"><code class="sourceCode haskell">chunkLoop batchSize action files
+    <span class="fu">=</span> loop <span class="dv">1</span> (view (chunksOf batchSize) files)
+  <span class="kw">where</span> loop n f <span class="fu">=</span> <span class="kw">do</span> x <span class="ot">&lt;-</span> runFreeT f
+                      <span class="kw">case</span> x <span class="kw">of</span>
+                        <span class="dt">Pure</span> r <span class="ot">-&gt;</span> return r
+                        <span class="dt">Free</span> p <span class="ot">-&gt;</span> <span class="kw">do</span> f&#39; <span class="ot">&lt;-</span>  action n p; loop (n<span class="fu">+</span><span class="dv">1</span>) f&#39;
+
+processHoogleBatched batchSize hoogleTarPath <span class="fu">=</span> <span class="kw">do</span>
+  <span class="co">-- create a stream of files in the archive:</span>
+  files <span class="ot">&lt;-</span> filesInTarArchive hoogleTarPath
+  chunkLoop batchSize action files
+
+  <span class="kw">where</span>
+    action n pipeline <span class="fu">=</span> <span class="kw">do</span>
+      <span class="kw">let</span> path <span class="fu">=</span> <span class="st">&quot;batch-&quot;</span> <span class="fu">++</span> show n <span class="fu">++</span> <span class="st">&quot;.js&quot;</span>
+      <span class="co">-- withFile closes handle if exception is thrown</span>
+      r <span class="ot">&lt;-</span> withFile path <span class="dt">WriteMode</span> <span class="fu">$</span> \h <span class="ot">-&gt;</span> <span class="kw">do</span>
+             runEffect <span class="fu">$</span> pipeline <span class="fu">&gt;-&gt;</span> for cat (go h)
+      <span class="co">-- chunkLoop uses this return value</span>
+      <span class="co">-- Note: r really comes from runEffect</span>
+      return r
+
+   go h (pkgName, content) <span class="fu">=</span> <span class="kw">do</span>
+     <span class="fu">...</span> process a single <span class="dt">Hoogle</span> file<span class="fu">...</span>
+     <span class="fu">...</span> emit commands to file handle h<span class="fu">...</span></code></pre>
+</div>
+<div id="results" class="slide section level1">
+<h1>Results</h1>
+<ul class="incremental">
+<li>Processing time now about 5 mins for both cabal and hoogle files</li>
+<li>About 100x faster than scraping</li>
+</ul>
+</div>
+<div id="summary" class="slide section level1">
+<h1>Summary</h1>
+<ul class="incremental">
+<li>Pipes was indespensible for managing the complexity of this program</li>
+<li>Learned a lot about Monad transformer stacks: <code>StateT</code>, <code>FreeT</code></li>
+<li>Learned a lot about lenses</li>
+<li>Good exercise in processing files in a streaming fashion</li>
+<li>Iterating through a tar archive still uses lazy-I/O; should be Pipes/Conduit-based</li>
+<li><p>Can encounter some complex types when using <code>pipes</code>:</p>
+<p><code>Producer a m r</code></p>
+<p><code>Producer a m (Producer a m r)</code></p>
+<p><code>FreeT (Producer a m) m r</code></p></li>
+</ul>
+</div>
+</body>
+</html>
